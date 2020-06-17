@@ -1,9 +1,9 @@
-﻿using System.Linq;
+﻿using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Azure.CognitiveServices.ContentModerator;
+using Microsoft.Azure.CognitiveServices.Vision.CustomVision.Prediction;
 using Microsoft.Azure.CognitiveServices.Vision.Face;
-using Microsoft.Cognitive.CustomVision.Prediction;
-using Microsoft.CognitiveServices.ContentModerator;
 using Plugin.Media.Abstractions;
 
 namespace AmazingSocialMedia.Services
@@ -11,7 +11,7 @@ namespace AmazingSocialMedia.Services
     public class ContentModeratorService
     {
 		private const double ProbabilityThreshold = 0.5;
-        private PredictionEndpoint _endpoint;
+        private CustomVisionPredictionClient customVisionPredictionClient;
         private ContentModeratorClient _client;
         private FaceAPI _faceApi;
 
@@ -21,7 +21,6 @@ namespace AmazingSocialMedia.Services
             {
                 var credentials = new ApiKeyServiceClientCredentials(ApiKeys.ContentModeratorKey);
                 _client = new ContentModeratorClient(credentials);
-                _client.BaseUrl = ApiKeys.ContentModeratorBaseUrl;
             }
 
             if (_faceApi == null)
@@ -31,8 +30,8 @@ namespace AmazingSocialMedia.Services
                 _faceApi.AzureRegion = ApiKeys.FaceApiRegion;
             }
 
-            if (_endpoint == null)
-                _endpoint = new PredictionEndpoint { ApiKey = ApiKeys.PredictionKey };
+            if (customVisionPredictionClient == null)
+                customVisionPredictionClient = new CustomVisionPredictionClient { ApiKey = ApiKeys.PredictionKey, Endpoint = "https://jfversluis-customvisionsample.cognitiveservices.azure.com/" };
         }
 
         public async Task<bool> IsFace(MediaFile photo)
@@ -54,9 +53,9 @@ namespace AmazingSocialMedia.Services
 
             using (var stream = photo.GetStreamWithImageRotatedForExternalStorage())
             {
-                var predictionModels = await _endpoint.PredictImageAsync(ApiKeys.ProjectId, stream);
+                var predictionModels = await customVisionPredictionClient.ClassifyImageAsync(ApiKeys.ProjectId, "Iteration1", stream);
                 return predictionModels.Predictions
-                                       .FirstOrDefault(p => p.Tag == "Duck Face")
+                                       .FirstOrDefault(p => p.TagName == "duckface")
                                        .Probability > ProbabilityThreshold;
             }
         }
@@ -66,9 +65,22 @@ namespace AmazingSocialMedia.Services
             InitIfRequired();
             if (string.IsNullOrEmpty(text)) return false;
 
-            var lang = await _client.TextModeration.DetectLanguageAsync("text/plain", text);
-            var moderation = await _client.TextModeration.ScreenTextAsync(lang.DetectedLanguageProperty, "text/plain", text);
-            return moderation.Terms != null && moderation.Terms.Any();
+            using (var textStream = GenerateStreamFromString(text))
+            {
+                var lang = await _client.TextModeration.DetectLanguageAsync("text/plain", textStream);
+                var moderation = await _client.TextModeration.ScreenTextAsync("text/plain", textStream, lang.DetectedLanguageProperty);
+                return moderation.Terms != null && moderation.Terms.Any();
+            }
+        }
+
+        private static Stream GenerateStreamFromString(string s)
+        {
+            var stream = new MemoryStream();
+            var writer = new StreamWriter(stream);
+            writer.Write(s);
+            writer.Flush();
+            stream.Position = 0;
+            return stream;
         }
     }
 }

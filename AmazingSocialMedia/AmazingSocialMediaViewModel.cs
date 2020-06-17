@@ -48,8 +48,13 @@ namespace AmazingSocialMedia
 
         private async Task TakePhoto()
         {
-            _photo = await Plugin.Media.CrossMedia.Current.TakePhotoAsync(new StoreCameraMediaOptions());
-            PhotoSource = (StreamImageSource)ImageSource.FromStream(() => _photo.GetStream());
+            _photo = await Plugin.Media.CrossMedia.Current.TakePhotoAsync(new StoreCameraMediaOptions
+            {
+                RotateImage = false,
+                PhotoSize = PhotoSize.Medium,
+                DefaultCamera = CameraDevice.Front
+            });
+            PhotoSource = (StreamImageSource)ImageSource.FromStream(() => _photo.GetStreamWithImageRotatedForExternalStorage());
         }
 
         private readonly ContentModeratorService _contentModerator = new ContentModeratorService();
